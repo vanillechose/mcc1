@@ -1,0 +1,339 @@
+%code requires {
+#   include "semant.h"
+#   include "source.h"
+#   include "strings.h"
+    void ilex(const char *source);
+}
+
+%define api.location.type {struct loc}
+%define api.token.prefix  {T}
+%define parse.error       custom
+%define parse.lac         full
+
+%union {
+    string        *id;
+    struct symbol *sym;
+    struct vec    *vec;
+    struct tree   *tree;
+    struct type   *ty;
+
+    int ts;
+}
+
+/* @@TOKENS@@ this line gets replaced by token definitions, see the Makefile */
+
+%token INTEGER
+%token IDENT
+
+%type <id> IDENT
+
+%nterm <ts>  typespec
+%nterm <ty>  typename
+%nterm <vec> paramlist
+%nterm <sym> paramdecl
+%nterm <sym> declarator pointer
+
+%nterm <tree> stmt
+%nterm <tree> closedstmt
+%nterm <tree> openstmt
+%nterm <tree> return
+%nterm <tree> compound
+%nterm <tree> if
+%nterm <tree> while
+%nterm <tree> for
+%nterm <tree> optfor
+
+%nterm <vec>  arglist
+
+%nterm <tree> expression
+%nterm <tree> assignment
+%nterm <tree> or xor and
+%nterm <tree> equality
+%nterm <tree> relational
+%nterm <tree> shift
+%nterm <tree> add
+%nterm <tree> mul
+%nterm <tree> cast
+%nterm <tree> unary
+%nterm <tree> postfix
+%nterm <tree> primary
+
+%start unit
+
+/* {{{ code */
+%code {
+#   include "common.h"
+
+    void yyerror(const char *msg) {
+        die("yyerror: %s", msg);
+    }
+
+#   define YYLLOC_DEFAULT(cur, rhs, n) do { \
+        if(n) { \
+            (cur) = LOCRANGE(YYRHSLOC((rhs), 1), YYRHSLOC((rhs), (n))); \
+        } else { \
+            (cur) = (struct loc) { 0, 0 }; \
+        } \
+    } while(0)
+
+    /*
+     * defined in lex.c
+     */
+    int yylex(void);
+
+    static struct vec *empty_plist(void) {
+        struct vec *params = xmalloc(sizeof *params);
+        *params = vec_of(struct symbol *);
+        return params;
+    }
+
+    static struct vec *empty_alist(void) {
+        struct vec *args = xmalloc(sizeof *args);
+        *args = vec_of(struct tree *);
+        return args;
+    }
+}
+/* }}} */
+%%
+
+/* {{{ Declarations */
+unit: %empty  { emitwarn(@$, "empty translation unit"); }
+    | extdefs
+    ;
+
+extdefs: extdef
+       | extdefs extdef
+       ;
+
+extdef: decl
+      | fndef
+      ;
+
+fndef: declspecs pointer
+       { $<sym>$ = define_function(LOCRANGE(@1, @2), $2); enter_fun($<sym>$); }
+       compound
+       { $<sym>3->body = $4; leave_fun(); }
+     ;
+
+declspecs: typespec           { enter_decl(0); add_specifier(@$, $1); }
+         | declspecs typespec { add_specifier(@2, $2); }
+         ;
+
+typespec: UNSIGNED { $$ = SpecUnsigned; }
+        | SIGNED   { $$ = SpecSigned; }
+        | INT      { $$ = SpecInt; }
+        | LONG     { $$ = SpecLong; }
+        | VOID     { $$ = SpecVoid; }
+        ;
+
+decl: declspecs initdecls SEMICOLON { leave_decl(@$); }
+    ;
+
+initdecls: %empty
+         | nonempty_initdecls
+         ;
+
+nonempty_initdecls: initdecl
+                  | nonempty_initdecls COMMA initdecl
+                  ;
+
+initdecl: pointer { declare_symbol($1); }
+        ;
+
+pointer: declarator  { $$ = $1; }
+       | MUL pointer { $$ = make_pdecl(@$, $2); }
+       ;
+
+declarator: IDENT                              { $$ = make_idecl(@$, $1); }
+          | declarator LPAREN paramlist RPAREN { $$ = make_fdecl(@$, $1, $3); }
+          | declarator LPAREN VOID RPAREN      { $$ = make_fdecl(@$, $1, empty_plist()); }
+          | declarator LPAREN RPAREN           { $$ = make_fdecl(@$, $1, empty_plist()); }
+          ;
+
+paramlist: paramdecl                 { $$ = empty_plist(); vec_push($$, &$1); }
+         | paramlist COMMA paramdecl { vec_push($1, &$3); }
+         ;
+
+paramdecl: declspecs pointer { leave_decl(@$); $$ = $2; }
+         ;
+/* }}} */
+/* {{{ Statements */
+compound: LCURLY { enter_block(@1); } stmts RCURLY { $$ = leave_block(); }
+        ;
+
+stmts: %empty
+     | stmts decl
+     | stmts stmt { if($2) append_statement($2); }
+     ;
+
+stmt: openstmt   { $$ = $1; }
+    | closedstmt { $$ = $1; }
+    ;
+
+openstmt: if stmt                     { $$ = $1; $$->t = $2; }
+        | if closedstmt ELSE openstmt {  $$ = $1; $$->t = $2; $$->f = $4; }
+        | while openstmt              { $$ = $1; $$->t = $2; }
+        | for openstmt                { $$ = $1; add_for_body($$, $2); }
+        ;
+
+closedstmt: if closedstmt ELSE closedstmt { $$ = $1; $$->t = $2; $$->f = $4; }
+          | while closedstmt              { $$ = $1; $$->t = $2; }
+          | for closedstmt                { $$ = $1; add_for_body($$, $2); }
+          | DO stmt while                 { $$ = $3; $$->op = Odowhile; $$->t = $2; }
+          | compound                      { $$ = $1; }
+          | SEMICOLON                     { $$ = NULL; }
+          | expression SEMICOLON          { $$ = $1; }
+          | return     SEMICOLON          { $$ = $1; }
+          ;
+
+if: IF LPAREN expression RPAREN { $$ = make_branch(@$, Obranch, $3); }
+  ;
+
+while: WHILE LPAREN expression RPAREN { $$ = make_branch(@$, Owhile, $3); }
+     ;
+
+for: FOR LPAREN optfor SEMICOLON optfor SEMICOLON optfor RPAREN
+     { $$ = make_for(@$, $3, $5, $7); }
+   ;
+
+optfor: %empty     { $$ = NULL; }
+      | expression { $$ = $1;   }
+      ;
+
+return: RETURN            { $$ = make_return(@$, NULL); }
+      | RETURN expression { $$ = make_return(@$, $2); }
+      ;
+/* }}} */
+/* {{{ === Expressions === */
+expression: assignment { $$ = $1; }
+          ;
+
+assignment: or ASSIGN assignment { $$ = make_assign(@$, $1, $3); }
+          | or                   { $$ = $1; }
+          ;
+
+or: or BAR xor { $$ = make_binary(@$, Oor, $1, $3); }
+  | xor        { $$ = $1; }
+  ;
+
+xor: xor XOR and { $$ = make_binary(@$, Oxor, $1, $3); }
+   | and         { $$ = $1; }
+   ;
+
+and: and AMPERSAND shift { $$ = make_binary(@$, Oand, $1, $3); }
+   | equality            { $$ = $1; }
+   ;
+
+equality: equality EQ relational  { $$ = make_binary(@$, Oeq, $1, $3); }
+        | equality NEQ relational { $$ = make_binary(@$, Oneq, $1, $3); }
+        | relational              { $$ = $1; }
+        ;
+
+relational: relational LESS shift    { $$ = make_binary(@$, Olt, $1, $3); }
+          | relational GREATER shift { $$ = make_binary(@$, Ogt, $1, $3); }
+          | relational LE shift      { $$ = make_binary(@$, Ole, $1, $3); }
+          | relational GE shift      { $$ = make_binary(@$, Oge, $1, $3); }
+          | shift                    { $$ = $1; }
+          ;
+
+shift: shift LSHIFT add { $$ = make_binary(@$, Osl, $1, $3); }
+     | shift RSHIFT add { $$ = make_binary(@$, Osr, $1, $3); }
+     | add              { $$ = $1; }
+     ;
+
+add: add PLUS mul  { $$ = make_binary(@$, Oadd, $1, $3); }
+   | add MINUS mul { $$ = make_binary(@$, Osub, $1, $3); }
+   | mul           { $$ = $1; }
+   ;
+
+mul: mul MUL cast { $$ = make_binary(@$, Omul, $1, $3); }
+   | mul DIV cast { $$ = make_binary(@$, Odiv, $1, $3); }
+   | mul MOD cast { $$ = make_binary(@$, Omod, $1, $3); }
+   | cast         { $$ = $1; }
+   ;
+
+typename: specquals { $$ = declspec_type(@$); leave_decl(@$); }
+        ;
+
+specquals: typespec           { enter_decl(1); add_specifier(@1, $1); }
+         | specquals typespec { add_specifier(@2, $2); }
+         ;
+
+cast: LPAREN typename RPAREN cast { $$ = make_cast(@$, $2, $4); }
+    | unary                       { $$ = $1; }
+    ;
+
+unary: AMPERSAND unary   { $$ = make_unary(@$, Oaddr, $2); }
+     | MUL unary         { $$ = make_unary(@$, Oindir, $2); }
+     | PLUS unary        { $$ = make_unary(@$, Opos, $2); }
+     | MINUS unary       { $$ = make_unary(@$, Oneg, $2); }
+     | TILDE unary       { $$ = make_unary(@$, Ocomp, $2); }
+     | NOT unary         { $$ = make_unary(@$, Onot, $2); }
+     | postfix
+     ;
+
+postfix: postfix LBRACKET expression RBRACKET { $$ = make_subscript(@$, $1, $3); }
+       | postfix LPAREN arglist RPAREN        { $$ = make_call(@$, $1, $3); }
+       | postfix LPAREN RPAREN                { $$ = make_call(@$, $1, empty_alist()); }
+       | primary                              { $$ = $1; }
+       ;
+
+arglist: expression               { $$ = empty_alist(); vec_push($$, &$1); }
+       | arglist COMMA expression { $$ = $1; vec_push($$, &$3); }
+       ;
+
+primary: INTEGER                  { $$ = make_iconst(@1); }
+       | IDENT                    { $$ = make_ident(@1, $1); }
+       | LPAREN expression RPAREN { $$ = $2; }
+       ;
+/* }}} */
+
+%%
+/* {{{ */
+static const char *string_of_symbol(yysymbol_kind_t code) {
+#   include "tokens.def"
+#   define s(str, t) \
+    case YYSYMBOL_ ## t: return "'" str "'";
+
+    switch(code) {
+        FOREACH_TOKEN(s)
+
+        case YYSYMBOL_YYEOF:   return "end of file";
+        case YYSYMBOL_IDENT:   return "identifier";
+        case YYSYMBOL_INTEGER: return "integer constant";
+
+        default: return yysymbol_name(code);
+    }
+
+#   undef s
+}
+
+static int yyreport_syntax_error(const yypcontext_t *ctx) {
+    struct loc *offending = yypcontext_location(ctx);
+
+    yysymbol_kind_t found = yypcontext_token(ctx);
+
+    emiterror(*offending, "syntax error: unexpected %s", string_of_symbol(found));
+
+    int needed = yypcontext_expected_tokens(ctx, NULL, 0);
+    if(needed < 0)
+        /* forward to yyerror */
+        return needed;
+    yysymbol_kind_t *expected = xcalloc(needed, sizeof *expected);
+    if(yypcontext_expected_tokens(ctx, expected, needed) != needed)
+        return needed;
+
+    if(needed == 0)
+        return 0;
+    
+    fprintf(stderr, "(fix): expected%s %s", needed > 1 ? " one of" : "",
+        string_of_symbol(expected[0]));
+    for(unsigned i = 1; i < (unsigned)needed; i += 1)
+        fprintf(stderr, ", %s", string_of_symbol(expected[i]));
+    fprintf(stderr, "\n");
+
+    free(expected);
+
+    return 0;
+}
+/* }}} */

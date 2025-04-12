@@ -1,0 +1,119 @@
+/* vim:set filetype=c: */
+#ifndef TOKENS_DEF
+#define TOKENS_DEF
+
+#define FOREACH_PUNCTUATOR(f) \
+    f("...", CDOTS)        \
+    f("<<=", LSHIFTASSIGN) \
+    f(">>=", RSHIFTASSIGN) \
+    \
+    f("!=", NEQ)         \
+    f("%=", MODASSIGN)   \
+    f("&&", AND)         \
+    f("&=", ANDASSIGN)   \
+    f("*=", MULASSIGN)   \
+    f("++", INC)         \
+    f("+=", PLUSASSIGN)  \
+    f("--", DEC)         \
+    f("-=", MINUSASSIGN) \
+    f("->", ARROW)       \
+    f("/=", DIVASSIGN)   \
+    f("::", COLONS)      \
+    f("<<", LSHIFT)      \
+    f("<=", LE)          \
+    f("==", EQ)          \
+    f(">=", GE)          \
+    f(">>", RSHIFT)      \
+    f("^=", XORASSIGN)   \
+    f("|=", ORASSIGN)    \
+    f("||", OR)          \
+    \
+    f("!", NOT)       \
+    f("%", MOD)       \
+    f("&", AMPERSAND) \
+    f("(", LPAREN)    \
+    f(")", RPAREN)    \
+    f("*", MUL)       \
+    f("+", PLUS)      \
+    f(",", COMMA)     \
+    f("-", MINUS)     \
+    f(".", DOT)       \
+    f("/", DIV)       \
+    f(":", COLON)     \
+    f(";", SEMICOLON) \
+    f("<", LESS)      \
+    f("=", ASSIGN)    \
+    f(">", GREATER)   \
+    f("?", TEST)      \
+    f("[", LBRACKET)  \
+    f("]", RBRACKET)  \
+    f("^", XOR)       \
+    f("{", LCURLY)    \
+    f("|", BAR)       \
+    f("}", RCURLY)    \
+    f("~", TILDE)     \
+
+
+#define FOREACH_KEYWORD(f) \
+    f("alignas",       ALIGNAS) \
+    f("alignof",       ALIGNOF) \
+    f("auto",          AUTO) \
+    f("bool",          BOOL) \
+    f("break",         BREAK) \
+    f("case",          CASE) \
+    f("char",          CHAR) \
+    f("const",         CONST) \
+    f("constexpr",     CONSTEXPR) \
+    f("continue",      CONTINUE) \
+    f("default",       DEFAULT) \
+    f("do",            DO) \
+    f("double",        DOUBLE) \
+    f("else",          ELSE) \
+    f("enum",          ENUM) \
+    f("extern",        EXTERN) \
+    f("false",         FALSE) \
+    f("float",         FLOAT) \
+    f("for",           FOR) \
+    f("goto",          GOTO) \
+    f("if",            IF) \
+    f("inline",        INLINE) \
+    f("int",           INT) \
+    f("long",          LONG) \
+    f("nullptr",       NULLPTR) \
+    f("register",      REGISTER) \
+    f("restrict",      RESTRICT) \
+    f("return",        RETURN) \
+    f("short",         SHORT) \
+    f("signed",        SIGNED) \
+    f("sizeof",        SIZEOF) \
+    f("static",        STATIC) \
+    f("static_assert", STATIC_ASSERT) \
+    f("struct",        STRUCT) \
+    f("switch",        SWITCH) \
+    f("thread_local",  THREAD_LOCAL) \
+    f("true",          TRUE) \
+    f("typedef",       TYPEDEF) \
+    f("typeof",        TYPEOF) \
+    f("typeof_unqual", TYPEOF_UNQUAL) \
+    f("union",         UNION) \
+    f("unsigned",      UNSIGNED) \
+    f("void",          VOID) \
+    f("volatile",      VOLATILE) \
+    f("while",         WHILE) \
+    f("_Atomic",       _ATOMIC) \
+    f("_BitInt",       _BITINT) \
+    f("_Complex",      _COMPLEX) \
+    f("_Decimal128",   _DECIMAL128) \
+    f("_Decimal32",    _DECIMAL32) \
+    f("_Decimal64",    _DECIMAL64) \
+    f("_Generic",      _GENERIC) \
+    f("_Imaginary",    _IMAGINARY) \
+    f("_Noreturn",     _NORETURN) \
+
+
+#define FOREACH_TOKEN(f)  \
+    FOREACH_KEYWORD(f)    \
+    FOREACH_PUNCTUATOR(f) \
+
+
+#endif /* TOKENS_DEF */
